@@ -1,6 +1,7 @@
 # Adapted from https://github.com/github/gitignore/blob/main/R.gitignore
 data/*
 models/*
+*.docx
 
 # History files
 .Rhistory
