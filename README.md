@@ -6,20 +6,17 @@ Jon Downs
 
 ## Introduction
 
-[TODO] We end up referencing the ECHIDNA paper a lot.
-I need a standard way to refer to it as well as an explicit call-out that we will be talking about it a lot.
-
 Record linkage and record deduplication are a common tasks in vital records and public health.
 This is due to the nature of how data are received.
 The Center for Health Statistics (CHS) receives data from hospitals, primary care offices, medical examiners, funeral homes, and birthing centers.
-To facilitate this work, CHS has a dedicated Linkage and Data Analysis team, or LIDA.
-LIDA's primary focus is to identify links with high accuracy, but demands for better script runtimes and modularity have grown alongsize the catalog of work.
+To facilitate this work, CHS has a dedicated Linkage and Integrated Data Analysis team, or LIDA.
+LIDA prioritizes equitable representation and high accuracy in their linkage processes, but demands for better script runtimes and modularity have grown alongside the volume and scale of work.
 This is exacerbated by an anticipated loss of cloud computing power due to changes in the funding landscape.
 In 2025, LIDA partnered with the Data Science and Engineering team (DSE) at CHS to improve the performance and efficiency of some pipelines.
 This collaboration is ongoing, but many improvements have already been found.
 
-LIDA previously created a tutorial version of a real production linkage pipeline [here](https://doh.wa.gov/sites/default/files/2024-01/346147-MachineLearningLinkageDemo.pdf).
-Anecdotally, others have since adapted this work for their own linkage processes.
+LIDA previously created a demonstration version of a real production linkage pipeline [based on their ECHIDNA linkage project](https://doh.wa.gov/sites/default/files/2024-01/346147-MachineLearningLinkageDemo.pdf).
+Others have since adapted this work for their own linkage processes.
 However, this pipeline is not optimized for performance, and it is not a reproducible example.
 A reproducible example is a combination of documentation, source code, and input data that allows someone to rerun a code example from start to finish and get exactly the same result.
 Reproducible examples are both a great resource for learning and proof that the code being provided works as described.
@@ -35,11 +32,13 @@ Second, it creates a controlled environment to test out new modeling strategies.
 A reference pipeline can be converted into production with minimal changes.
 Reference pipelines and other code testing strategies are highly encouraged for these reasons.
 After this, we highlight performance pitfalls discovered during a review of our own linkage pipelines.
+All of the examples in the performance pitfalls section are adapted from relevant sections of the [ECHIDNA demonstration and evaluation project](https://doh.wa.gov/sites/default/files/2024-01/346147-MachineLearningLinkageDemo.pdf).
 
-This document is designed for intermediate R users with a background in public health or the social sciences.
-The goal is not to achieve state of the art accuracy or optimal performance.
+The intended audience for this document is intermediate R users with a background in public health or the social sciences.
+Contrary to other CHS linkage reports, the goal is not to achieve state of the art accuracy or optimal performance.
 Rather, it represents a base case framework that can be customized and optimized according to the needs of a project.
 We will highlight places where customization would likely improve the end product.
+Please refer to other CHS reports, such as the ECHIDNA project, for examples of fully customized linkage pipelines.
 
 ## Example Pipeline: Deduplicating a List of Records
 
@@ -54,7 +53,7 @@ Traditional blocking is a combination of exact and fuzzy matches on fields such 
 An exact match is one where the two fields are identical, and fuzzy matches allow some amount of pre-defined error between the two fields.
 For example, if you chose to block on exact DOB and a fuzzy match on last name, a John Doe born on 2/1/1980 would be in the same block as John Dove born 2/1/1980.
 
-As previously mentioned, our final product is a reference implementation.
+Our final product is a reference implementation.
 In a proper golden test, exact replication is expected.
 Here, we have a stochastic process with a model.
 Proving the whole system catches enough true links with few false positives is sufficient for now.
@@ -65,18 +64,35 @@ In real projects, revisit this testing strategy once the process is mature.
 Data come from the RLdata10000 data source of the [RecordLinkage](https://cran.r-project.org/web/packages/RecordLinkage/RecordLinkage.pdf) R package. 
 The dataset is artificially-generated records based on the most common names in Germany, and 10% of the records are duplicates that should link to another record in the dataset.
 
-### Dependencies
+### Project Set-up
 
-- R 4.3.2
-- The following R packages as well as their dependencies:
-	- `data.table`, version 1.17.2
-	- `stringdist`, version 0.9.15
-	- `RecordLinkage`, version 0.4-12.4, or any version that contains the RLdata10000 dataset.
-	- `e1071`, version 1.7-16, for SVM models.
-	- `randomForest`, version 4.7-1.2
-        - [TODO] Finalize package list at some point
+All code was written in R version 4.3.2 in Windows on an x86-64 bit architecture.
+While it was not tested in other versions of R, we expect the code to run as expected on most modern versions of R.
+Users who wish to follow along with the code samples should clone the source code from [the Github repo](https://github.com/DOH-JPD2303/LinkageRefImp/tree/main).
 
-A proper renv lockfile can be provided to interested users on request. [TODO can we please just put this on GitHub?]
+```
+git clone https://github.com/DOH-JPD2303/LinkageRefImp/tree/main
+cd ./LinkageRefImp
+```
+
+The project includes a `renv` environment that can be used to recreate the exact package versions used.
+Those new to `renv` should read the [Introduction to renv vignette](https://rstudio.github.io/renv/articles/renv.html).
+To get started with `renv`, run the following R code in the root of the project repo:
+
+```{r}
+# Install renv, if necessary
+# install.packages('renv')
+renv::restore()
+```
+
+Alternatively, one could choose to install all necessary packages on their own:
+
+```{r}
+install.packages(c(
+        'data.table', 'RecordLinkage', 'stringdist', 'microbenchmark', 'snow',
+        'foreach', 'doParallel', 'parallel', 'e1071', 'randomForest'
+        ))
+```
 
 ### Implementation
 
@@ -91,19 +107,19 @@ Our reference pipeline contains the following steps:
 5) Model fit on training set
 6) Model evaluation on testing set
 
-One notable difference from a real-world, production pipeline is that we have the answer beforehand.
-That is, we know which records should be linked and which ones should not.
+One notable difference from a real-world, production pipeline is that the true and false links are already known.
 This is not a luxury available to any non-trivial linkage project.
 A real-world project might look more like this:
 
 1) Setup and Load Data
-2) Blocking
-3) Feature engineering
-4) Generate model predictions
+2) Cleaning, standardizing and custom variable generation
+3) Blocking
+4) Feature engineering
+5) Generate model predictions
 	- If this is the first iteration, unsupervised methods or transfer learning will be required to generate the first set of links. This will likely require heuristics or a great deal of human review. The result of this work can then be used to train a custom supervised model.
-5) If necessary, validate the model predictions to remove bad links, or catch links the model missed.
-6) Assign a common person identifier to any successful links.
-7) Retrain the linkage model as more links are made or the model stops improving.
+6) If necessary, validate the model predictions to remove bad links, or catch links the model missed.
+7) Assign a common person identifier to any successful links.
+8) Retrain the linkage model as more links are made or the model stops improving.
 
 #### Setup and Load Data
 
@@ -116,9 +132,6 @@ library(RecordLinkage)
 library(e1071)
 library(randomForest)
 library(stringdist)
-
-# If first run, need to install packages
-# install.packages(c('RecordLinkage', 'data.table', 'stringdist', 'e1071', 'randomForest'))
 
 # Load data, convert to data.table
 data(RLdata10000)
@@ -136,7 +149,7 @@ Next, we perform some light data manipulation to facilitate blocking.
 First, we convert birth day/month/year to string variables.
 Next, we assign a row ID to uniquely identify each record.
 Finally, we assign a "person ID", which uniquely identifies persons, some of whom have 2+ records in the full dataset.
-The person ID is the desired target of our model.
+In a production scenario, the goal would be to create and maintain the person ID variable.
 
 ```{r}
 # Universal type conversions, missingness handling, and assigning persistent IDs
@@ -159,7 +172,7 @@ recs[, `:=` (
 ```
 
 Next, let's create a dataset of true links to evaluate the performance of the rest of the pipeline.
-Note that following a join, the default data.table behavior is to add an `i.` prefix to any columns on the right hand side if it shares a name with the left hand side.
+Following a join, the default data.table behavior is to add the prefix `i.` to any columns on the right-hand side if it shares a name with the left-hand side.
 
 ```{r}
 # Row pairs can come in a jumbled order
@@ -189,10 +202,10 @@ Next we perform blocking.
 Without blocking, we would have to compare all records to one another.
 In our example dataset of 10,000 records, 49,995,000 unique comparisons are possible.
 With 1,000 true links, this means there are 49,994 bad candidates for each true link.
-For every true link there are enough bad candidates to sell out the next Seattle Mariners game, with 2,065 people left over.
+Thus, for every true link there are enough bad candidates to sell out the next Seattle Mariners game, with 2,065 people left over.
 This is clearly a waste of computing resources.
-Blocking uses relatively cheap comparisons early in the linkage process to filter out comparisons that are unlikely to be a true match.
-CHS pipelines tend to use traditional blocking based on deterministic rules.
+Blocking uses relatively cheap comparisons early in the linkage process to filter out unlikely matches while preserving as many likely candidates as possible.
+CHS pipelines tend to use traditional blocking based on exact and fuzzy string matches.
 For our reference implementation, we chose the following rules for blocking:
 
 1) Exact match on year of birth, first name differs by no more than two characters, last name differs by no more than two characters.
@@ -215,7 +228,7 @@ join_cols = c('by')
 dob = recs[recs, on=join_cols, allow.cartesian=TRUE][row_id != i.row_id]
 dob[, `:=` (
         fname_diff = stringdist(fname_c1, i.fname_c1, method='lv'),
-        lname_diff = stringdist(fname_c1, i.fname_c1, method='lv')
+        lname_diff = stringdist(lname_c1, i.lname_c1, method='lv')
 )]
 dob <- dob[fname_diff <= 2 | lname_diff <= 2]
 
@@ -274,16 +287,18 @@ print_blocking_performance(recs, candidates, truth)
 
 ```
 Number of true matches found: 997 (99.70%)
-Reduction ratio: (99.93%)
+Reduction ratio: (99.89%)
 ```
 
-Blocking reduced the number of records to compare by 99.93%, but 0.3% of true matches were also filtered out.
-Now, we only have around 34.1 candidates for every true match.
-There is certainly room for improvement: we leave that exercise to the reader.
+Blocking reduced the number of records to compare by 99.89%, but 0.3% of true matches were also filtered out.
+Now, we only have around 34 candidates for every true match.
+Depending on your linkage aims and project objective, this may be suitable.
+If not, more flexible blocking parameters are warranted.
+Here, there is certainly room for improvement: we leave that exercise to the reader.
+Please see the ECHIDNA demonstration project or other [CHS reports](https://doh.wa.gov/data-and-statistical-reports/health-statistics/analytical-methods-and-reports) for some blocking strategies we have used in real projects.
 
 #### Feature Engineering
 
-Next up, feature engineering.
 Any model that compares words must numerically represent the difference between the two items being compared.
 In traditional models, we use string distance metrics.
 Here, we stick to a limited set of string comparisons.
@@ -333,14 +348,14 @@ candidates[, (jw_names) := lapply(
 
 Here are a couple of potential features we might consider were we to improve upon this:
 
-- Add another type of string distance, such as cosine edit distances
+- Add another type of commonly utilized string distance, such as cosine distances
 - Add indicators for when a string was empty or had very few characters
 - Add handling for string distances when one string is very short
 - Take the minimum of multiple string distances. This is useful if, say, it is common for a last name to wind up in the first name field.
 
 Just remember: parsimony is a virtue.
 It makes your pipeline more stable and reduces compute time.
-Start with a relatively simple base, and use your reference dataset to prove that adding complexity improves the overall model fit.
+Start with a relatively simple base, and use a reference dataset to prove that adding complexity improves the overall model fit.
 
 #### Split into Training and Testing Datasets
 
@@ -382,11 +397,11 @@ The structure is as follows:
 
 - Meta model: logistic regression
 
-The component models each take all the string distances we calculated in the 'feature engineering' section.
+The component models each take all the string distances calculated in the 'feature engineering' section.
 The meta model takes the probabilities from the component models and uses them to produce a final determination.
 Especially for larger pipelines, you will not necessarily want to train a new model at each run of your pipeline.
 Thus, we save our model fit to file and load it for subsequent runs.
-If we ever renamed or deleted the model weights we saved, that would trigger a new round of model training.
+Renaming or deleting the model weights file triggers a new round of model training.
 
 ```
 # SVM model - train if needed, otherwise load pre-existing
@@ -488,25 +503,25 @@ print(meta_metrics)
 ```
 $Confusion
          Actual
-Predicted FALSE TRUE
-    FALSE  6630    5
-    TRUE      7  180
+Predicted FALSE  TRUE
+    FALSE 10995     5
+    TRUE      5   177
 
 $PPV
-[1] 0.9625668
+[1] 0.9725275
 
 $Sensitivity
-[1] 0.972973
+[1] 0.9725275
 
 $Specificity
-[1] 0.9989453
+[1] 0.9995455
 
 $F1
-[1] 0.9677419
+[1] 0.9725275
 ```
 
-This pipeline captures 97.2% of true links.
-After considering the 0.3% of true links we lost in blocking, our overall process should successfully identify 96.9% of true links.
+This pipeline captures 97.3% of true links.
+After considering the 0.3% of true links we lost in blocking, our overall process should successfully identify 97.0% of true links.
 This is a decent starting point, but could be improved further.
 One of the motivating principles for the LIDA team's work is that the 2-3% of links that standard tools systematically miss come from underserved groups.
 For a more complete accounting of the techniques LIDA uses to do this, please see their explainer of the ECHIDNA project.
@@ -514,22 +529,20 @@ For a more complete accounting of the techniques LIDA uses to do this, please se
 ## Performance Considerations
 
 Next, we discuss performance considerations.
-The first thing to understand is that languages like R and Python are slow.
-This is not an insult: the designers have deliberately made choices that increase ease of coding at the cost of slower runtime performance.
-It is often a good tradeoff to make.
-However, understanding the limitations of a programming language is necessary to mitigate those weaknesses.
-
-The second rule of performance is to do less stuff.
-This is the best type of performance win, because it typically increases the readability of your code, as well.
-Of course, this largely depends on the code you are optimizing.
-After a point, further code optimization will make your scripts more complex, not less.
-
 Before proceeding, a reminder: this paper is designed for those with a public health or social science background with intermediate R experience.
 Computer science has terminology and theory that are beyond the expertise of this article's authors.
 Curious readers should read about time complexity in computer science on their own.
 A good place to start is [big O notation](https://web.mit.edu/16.070/www/lecture/big_o.pdf).
 
-With that, let's talk about a few performance wins we have found in our own pipelines.
+The first thing to understand is that languages like R and Python were designed for ease of use, not runtime performance.
+In scenarios where performance matters, users must rely on R/Python libraries written in faster languages such as C/C++.
+The key to optimizing R/Python code is to efficiently and correctly use these libraries.
+Secondly, the best way to increase performance is to do less stuff. 
+The first priority is to identify and remove unnecessary and duplicative steps.
+This typically enhances the readability of the code, as well.
+After a point, further optimization likely means more complex code.
+
+With that, let's discuss some performance wins found in our review of CHS pipelines.
 Some of the examples below require the creation of new variables in our `candidates` dataset from above:
 
 ```{r}
@@ -539,7 +552,7 @@ candidates[, `:=` (
 )]
 ```
 
-We will also create a "big" version of the dataset to see how our code snippets might perform on a larger set of data:
+We also create a "big" version of the dataset to see how our code snippets might perform on a larger set of data:
 
 ```{r}
 big_candidates <- rbindlist(rep(list(candidates), 10))
@@ -549,8 +562,8 @@ big_candidates <- rbindlist(rep(list(candidates), 10))
 
 Many performance-optimized R functions are vectorized, meaning they take a vector as arguments.
 This is most effective when the underlying function is written in a faster language such as C.
-This way, C can do as much work as possible before incurring the overhead of sending the object back to your R session.
-This is why R users are always told that for loops are slow.
+This way, C can do as much work as possible before incurring the overhead of sending the object back to the R session.
+This is why R users are told that for loops are slow.
 A corollary to this is that rowwise operations are slow.
 Take this example of a code snippet adapted from the ECHIDNA demo:
 
@@ -611,7 +624,8 @@ Unit: milliseconds
 ```
 
 With 10x the rows to process, each method took 10x longer to run.
-Assuming the data continue to scale linearly, at some point the fully vectorized version of the code will run in one minute versus 35-40 minutes in the rowwise version.
+So it appears to be scaling linearly.
+When milliseconds become minutes, a 40x difference in runtime matters.
 There are two reasons why the rowwise function performs so slowly. 
 First, rather than calling a C function once with many input pairs, rowwise operations force a C call for each row in the dataset.
 The overhead of converting from C to R is incurred many, many times.
@@ -646,14 +660,13 @@ print(identical(candidates$MAX_DOB, candidates$MAX_DOB2))
 [1] TRUE
 ```
 
-If you find these sorts of mistakes in your own R code, I encourage you to spend a few days reading the documentation for the packages you use most frequently.
+There is no substitute for reading the documentation for frequently used packages and functions.
 You will be surprised how much you will learn!
 
 ### Use Functions as Intended
 
-Another issue we found in our pipelines was in the way that branching logic was combined with string distance calculations.
+We also found issues in the branching logic used within our string distance calculations.
 As mentioned earlier, we often want to modify q-gram based metrics when one string has fewer characters than q.
-However, the way this was implemented was buggy and a performance killer.
 Here is an adapted example from the ECHIDNA paper:
 
 ```
@@ -669,29 +682,12 @@ candidates[, 'FIRSTNAME_COS' := stringdist(
 ), by=.I]
 ```
 
-There are three problems with this code.
+There are three problems with the this code.
 First, we are doing an avoidable rowwise operation.
 Second, `data.table` has an [`fifelse` function](https://www.rdocumentation.org/packages/data.table/versions/1.16.4/topics/fifelse) that is multithreaded and much faster than the base R implementation (read the docs!).
-Third, `q` does not take vectorized arguments.
+Third, `q` is meant to take only a single integer, but instead a vector of values is provided.
 The third problem does not affect performance, but it does create an incorrect result.
-Let's show why with a simpler example:
-
-```
-a <- c('apple', 'banana', 'cavendish')
-b <- c('aple', 'bananas', 'Kaepernick')
-
-# Note both objects have q = 1 for the first-listed q argument
-out1 <- stringdist::stringdist(a, b, q=1, method='cosine')
-out2 <- stringdist::stringdist(a, b, q=c(1, 1056, 10e7), method='cosine')
-
-print(out1 == out2)
-# TRUE TRUE TRUE
-```
-
-When multiple arguments are passed to q, it ignores all but the first argument.
-Running this code within a data table seems to have caused a lot of unexpected behavior that I cannot fully explain.
-The end result is that 158 string distance calculations were incorrect in this example.
-Let's compare this to a new method that produces the correct result plus the added benefit of being over 100x faster:
+This can be seen by comparing it to an alternative approach (that is also 100x faster):
 
 ```{r}
 # Cosine edit distance with flexible handling of small strings
@@ -722,7 +718,43 @@ cosine_qflex <- function(left, right, max_q=3) {
 }
 
 candidates[, FIRSTNAME_COS_C2_ALT := cosine_qflex(fname_c2, i.fname_c2)]
+
+# In this case, results are different. Preview the first few instances.
+examine_cols <- c('fname_c2', 'i.fname_c2', 'FIRSTNAME_COS_C2', 'FIRSTNAME_COS_C2_ALT')
+print(head(
+        candidates[FIRSTNAME_COS_C2_ALT != FIRSTNAME_COS_C2, ..examine_cols]
+))
 ```
+
+```
+   fname_c2 i.fname_c2 FIRSTNAME_COS_C2 FIRSTNAME_COS_C2_ALT
+     <char>     <char>            <num>                <num>
+1:   WERNER     WERNIR        0.0000000                  0.5
+2:   DIETER    JUERGEN        0.0000000                  1.0
+3:     OLAF       OLAF        0.3291796                  0.0
+4:     OLAF      HEINZ        0.0000000                  1.0
+5:   VOLKER    JOACHIM        0.0000000                  1.0
+6:    KLAUS    JOACHIM        0.0000000                  1.0
+```
+
+The exact behavior behind this bug has been hard to pin down, but it has to do with how `q` is defined.
+When multiple arguments are passed to q, it ignores all but the first argument.
+This can be made clear with a simpler example:
+
+```
+a <- c('apple', 'banana', 'cavendish')
+b <- c('aple', 'bananas', 'Kaepernick')
+
+# Note both objects have q = 1 for the first-listed q argument
+out1 <- stringdist::stringdist(a, b, q=1, method='cosine')
+out2 <- stringdist::stringdist(a, b, q=c(1, 1056, 10e7), method='cosine')
+
+print(out1 == out2)
+# TRUE TRUE TRUE
+```
+
+Try not to get too clever, and always test your code.
+In general, avoid branching logic to assign a variable that's not meant to accept a vector of arguments.
 
 ### Avoid multithreaded foreach on Windows
 
@@ -804,7 +836,7 @@ The timing outputs show that the `foreach` loop spent nearly 5 seconds more time
 Note that memory allocation is a system call.
 Curious readers can learn more about the different kinds of parallelism in R [here](https://stat.ethz.ch/R-manual/R-devel/library/parallel/doc/parallel.pdf) and [here](https://cran.r-project.org/web//packages//abn/vignettes/multiprocessing.html).
 
-![Graphical depiction of foreach vs. parLapply on socket clusters](D:/ReferenceLinkageImp/img/foreach_vs_parLapply.drawio.svg)
+![Graphical depiction of foreach vs. parLapply on socket clusters](./img/foreach_vs_parLapply.drawio.svg)
 ## Conclusion
 
 In this paper, we have implemented a fully reproducible record deduplication pipeline and provided some general tips for improving performance.

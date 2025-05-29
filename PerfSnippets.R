@@ -15,7 +15,7 @@ candidates[, `:=` (
 )]
 big_candidates <- rbindlist(rep(list(candidates), 10))
 
-# Avoid Rowwise Operations -------------------------------------------------------------
+# Avoid Rowwise Operations for Vectorized Functions ----------------------------
 timing <- microbenchmark(
         bygroup = candidates[, 'DOB_HAM' := stringdist(DOB, i.DOB, method="hamming"), by=.I],
         noby = candidates[, 'DOB_HAM2' := stringdist(DOB, i.DOB, method="hamming")],
@@ -32,6 +32,7 @@ timing <- microbenchmark(
         )
 print(timing)
 
+# Use the right function for the job -------------------------------------------
 # Max DOB
 print(microbenchmark(
         rowwise = candidates[, MAX_DOB := max(DOB, i.DOB), by=.I],
@@ -40,8 +41,7 @@ print(microbenchmark(
         ))
 print(identical(candidates$MAX_DOB, candidates$MAX_DOB2))
 
-# Avoid By Groups -------------------------------------------------------------
-system.time({
+# Use functions as intended ----------------------------------------------------
 candidates[, 'FIRSTNAME_COS_C2' := stringdist(
         fname_c1,
         i.fname_c1,
@@ -52,7 +52,6 @@ candidates[, 'FIRSTNAME_COS_C2' := stringdist(
                 3
                 )
 ), by=.I]
-})
 
 # Cosine edit distance with flexible handling of small strings
 cosine_qflex <- function(left, right, max_q=3) {
@@ -83,6 +82,11 @@ cosine_qflex <- function(left, right, max_q=3) {
 
 candidates[, FIRSTNAME_COS_C2_ALT := cosine_qflex(fname_c2, i.fname_c2)]
 
+# In this case, results are different. Preview the first few instances.
+examine_cols <- c('fname_c2', 'i.fname_c2', 'FIRSTNAME_COS_C2', 'FIRSTNAME_COS_C2_ALT')
+print(head(
+        candidates[FIRSTNAME_COS_C2_ALT != FIRSTNAME_COS_C2, ..examine_cols]
+))
 
 # Avoid foreach -------------------------------------------------------------
 # Set up parallel processes
@@ -91,19 +95,19 @@ cl <- makeCluster(no_cores, type="PSOCK")
 registerDoParallel(cl)
 
 # Split data into one group for each process
-example[, grp := cut(seq_len(nrow(example)), breaks=no_cores, labels=FALSE)]
-example <- split(example, by='grp')
+big_candidates[, grp := cut(seq_len(nrow(big_candidates)), breaks=no_cores, labels=FALSE)]
+cand_split <- split(big_candidates, by='grp')
 
-# Memory/time profiler -- 
+# Get time for each type
 foreach_time <- system.time({
         # For-each, works best forking, which is not available on Windows
          foreach_result <- foreach(
                 i = 1:no_cores,
                 .packages = c('data.table', 'stringdist'),
-                .export="example",
+                .export="cand_split",
                 .combine=c
         ) %dopar% {
-                x <- example[[i]]
+                x <- cand_split[[i]]
                 output <- stringdist::stringdist(x$by, x$i.by, method='jw', nthread=1)
                 return(output)
         }
@@ -113,7 +117,7 @@ print(foreach_time)
 parlapply_time <- system.time({
         # Performs better on Windows
         parlap_result <- do.call(c, parLapply(
-                cl, example, 
+                cl, cand_split, 
                 function(x) stringdist::stringdist(x$by, x$i.by, method='jw', nthread=1)
         ))
 })

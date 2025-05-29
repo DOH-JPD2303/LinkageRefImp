@@ -5,9 +5,6 @@ library(e1071)
 library(randomForest)
 library(stringdist)
 
-# If first run, need to install packages
-# install.packages(c('RecordLinkage', 'data.table', 'stringdist', 'e1071', 'randomForest'))
-
 # Load data, convert to data.table
 data(RLdata10000)
 recs <- data.table(RLdata10000)
@@ -29,9 +26,6 @@ recs[, `:=` (
         lname_c1 = fcoalesce(lname_c1, ''),
         lname_c2 = fcoalesce(lname_c2, '')
 )]
-if(!file.exists('./data/recs.csv')) {
-        data.table::fwrite(recs, "./data/recs.csv")
-}
 
 # Row pairs can come in a jumbled order
 # This function subsets/deduplicates the dataset so only unique pairs remain
@@ -113,10 +107,31 @@ print_blocking_performance(recs, candidates, truth)
 
 # Feature engineering ----------------------------------------------------------
 column_pairs <- list(
+        # LHS first name, first part
         c("fname_c1", "i.fname_c1"),
+        c("fname_c1", "i.fname_c2"),
+        c("fname_c1", "i.lname_c1"),
+        c("fname_c1", "i.lname_c2"),
+
+        # LHS first name, second part
+        c("fname_c2", "i.fname_c1"),
         c("fname_c2", "i.fname_c2"),
+        c("fname_c2", "i.lname_c1"),
+        c("fname_c2", "i.lname_c2"),
+
+        # LHS last name, first part
+        c("lname_c1", "i.fname_c1"),
+        c("lname_c1", "i.fname_c2"),
         c("lname_c1", "i.lname_c1"),
+        c("lname_c1", "i.lname_c2"),
+
+        # LHS last name, second part
+        c("lname_c2", "i.fname_c1"),
+        c("lname_c2", "i.fname_c2"),
+        c("lname_c2", "i.lname_c1"),
         c("lname_c2", "i.lname_c2"),
+
+        # Birth date (3 parts)
         c("by", "i.by"),
         c("bm", "i.bm"),
         c("bd", "i.bd")
@@ -242,6 +257,7 @@ meta_preds <- inference(X_test, svm_mod, rf_mod, meta_model)
 meta_metrics <- compute_metrics(as.factor(meta_preds > 0.5), Y_test, "TRUE")
 print(meta_metrics)
 
+# Save candidates to file for the performance snippets script
 candidates_fn <- file.path("./data/candidates.RDS")
 if (!file.exists(candidates_fn)) {
         saveRDS(candidates, candidates_fn)
