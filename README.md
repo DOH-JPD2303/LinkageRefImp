@@ -10,7 +10,7 @@ Record linkage and record deduplication are a common tasks in vital records and 
 This is due to the nature of how data are received.
 The Center for Health Statistics (CHS) receives data from hospitals, primary care offices, medical examiners, funeral homes, and birthing centers.
 To facilitate this work, CHS has a dedicated Linkage and Integrated Data Analysis team, or LIDA.
-LIDA prioritizes equitable representation and high accuracy in their linkage processes, but demands for better script runtimes and modularity have grown alongside the volume and scale of work.
+LIDA prioritizes equitable representation and high linkage accuracy, but demands for better script runtimes and modularity have grown alongside the volume and scale of work.
 This is exacerbated by an anticipated loss of cloud computing power due to changes in the funding landscape.
 In 2025, LIDA partnered with the Data Science and Engineering team (DSE) at CHS to improve the performance and efficiency of some pipelines.
 This collaboration is ongoing, but many improvements have already been found.
@@ -71,7 +71,7 @@ While it was not tested in other versions of R, we expect the code to run as exp
 Users who wish to follow along with the code samples should clone the source code from [the Github repo](https://github.com/DOH-JPD2303/LinkageRefImp/tree/main).
 
 ```
-git clone https://github.com/DOH-JPD2303/LinkageRefImp/tree/main
+git clone https://github.com/DOH-JPD2303/LinkageRefImp
 cd ./LinkageRefImp
 ```
 
