@@ -167,11 +167,15 @@ X_test <- test[, ..jw_names]
 Y_test <- test$is_match
 
 # Model fit --------------------------------------------------------------------
-# SVM model - train if needed, otherwise load pre-existing
+# Output file for SVM model
 svm_mod_fn <- file.path('./models/svm_mod.RDS')
-if(!dir.exists(dirname(svm_mod_fn)) {
+
+# Make model directory if it does not exist
+if(!dir.exists(dirname(svm_mod_fn))) {
         dir.create(dirname(svm_mod_fn))
 }
+
+# SVM model - train if needed, otherwise load pre-existing
 if(!file.exists(svm_mod_fn)) {
         svm_mod <- svm(y = Y_train, x = X_train, probability=TRUE)
         saveRDS(svm_mod, svm_mod_fn)
@@ -262,9 +266,13 @@ print(meta_metrics)
 
 # Save candidates to file for the performance snippets script
 candidates_fn <- file.path("./data/candidates.RDS")
-if(!dir.exists(dirname(candidates_fn)) {
+
+# Make data directory if it does not exist
+if(!dir.exists(dirname(candidates_fn))) {
         dir.create(dirname(candidates_fn))
 }
+
+# Save candidates to file if necessary
 if (!file.exists(candidates_fn)) {
         saveRDS(candidates, candidates_fn)
 }

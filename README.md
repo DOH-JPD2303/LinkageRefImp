@@ -404,14 +404,22 @@ Thus, we save our model fit to file and load it for subsequent runs.
 Renaming or deleting the model weights file triggers a new round of model training.
 
 ```
-# SVM model - train if needed, otherwise load pre-existing
+# Output file for SVM model
 svm_mod_fn <- file.path('./models/svm_mod.RDS')
+
+# Make model directory if it does not exist
+if(!dir.exists(dirname(svm_mod_fn))) {
+        dir.create(dirname(svm_mod_fn))
+}
+
+# SVM model - train if needed, otherwise load pre-existing
 if(!file.exists(svm_mod_fn)) {
         svm_mod <- svm(y = Y_train, x = X_train, probability=TRUE)
         saveRDS(svm_mod, svm_mod_fn)
 } else {
         svm_mod <- readRDS(svm_mod_fn)
 }
+
 
 # RF model - train if needed, load if not
 rf_mod_fn <- file.path('./models/rf_mod.RDS')
